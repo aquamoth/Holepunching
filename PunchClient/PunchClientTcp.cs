@@ -17,33 +17,33 @@ namespace PunchClient
 	{
 		internal async Task<bool> Start(string hostNameOrAddress, int port)
 		{
-			if (_client != null)
+			if (_centralServerClient != null)
 				throw new NotSupportedException("PunchClientTcp is already started.");
 
-			_client = await connectToCentralServer(hostNameOrAddress, port);
-			if (_client == null)
+			_centralServerClient = await connectToCentralServer(hostNameOrAddress, port);
+			if (_centralServerClient == null)
 				return false;
 
-			Trace.TraceInformation("Client connected to {0}.", remoteEndpointOf(_client.InfoHandler));
+			Trace.TraceInformation("Client connected to {0}.", remoteEndpointOf(_centralServerClient.InfoHandler));
 			return true;
 		}
 
 		internal void Stop()
 		{
 			Trace.TraceInformation("Disconnecting from server.");
-			_client.Disconnect();
-			_client = null;
+			_centralServerClient.Disconnect();
+			_centralServerClient = null;
 		}
 
 		internal async Task RegisterLocalEndpoint()
 		{
-			await Send("EndPoint " + localEndpointOf(_client.InfoHandler));
+			await Send("EndPoint " + localEndpointOf(_centralServerClient.InfoHandler));
 		}
 
 		internal async Task Send(string message)
 		{
 			var data = System.Text.Encoding.UTF8.GetBytes(message);
-			await _client.SendAsync(data);
+			await _centralServerClient.SendAsync(data);
 			Trace.TraceInformation("Client sent: {0}.", message);
 		}
 
@@ -55,12 +55,39 @@ namespace PunchClient
 		{
 			var message = System.Text.Encoding.UTF8.GetString(e.Data);
 			Trace.TraceInformation("Client received: {0}.", message);
+
+			var localPort = localEndpointOf(_centralServerClient.InfoHandler).Port;
+			_centralServerClient.Disconnect();
+			_peerServer = new TcpServerHandler(new IPAddress(0), localPort);
+			_peerServer.Connected += _localServer_Connected;
+			_peerServer.Start();
+
+			var parts = message.Split(':');
+			var address = Dns.GetHostAddresses(parts[0]).First();
+			var port = int.Parse(parts[1]);
+			_peerClient = new TcpClientHandler(address, port);
+			var success = _peerClient.Connect();
+			if (success)
+			{
+				Trace.TraceInformation("Local peer client is connected to {0}", _peerClient.InfoHandler.Client.Client.RemoteEndPoint);
+			}
+			else
+			{
+				Trace.TraceWarning("Local peer failed to connect.");
+			}
+		}
+
+		private void _localServer_Connected(object sender, TcpEventArgs e)
+		{
+			Trace.TraceInformation("Local Server got connection from {0}.", e.Client.Client.Client.RemoteEndPoint);
+			_peerServer.DisconnectClient(e.Client);
+			Trace.TraceInformation("Local Server disconnected client.");
 		}
 
 		private void _client_Disconnected(object sender, AltarNet.TcpEventArgs e)
 		{
 			Trace.TraceInformation("Client has been disconnected.");
-			_client = null;
+			_centralServerClient = null;
 		}
 
 
@@ -96,6 +123,9 @@ namespace PunchClient
 
 
 
-		AltarNet.TcpClientHandler _client = null;
+		TcpClientHandler _centralServerClient = null;
+		TcpServerHandler _peerServer = null;
+		TcpClientHandler _peerClient = null;
+
 	}
 }
