@@ -37,7 +37,7 @@ namespace PunchClient
 
 		internal async Task RegisterLocalEndpoint()
 		{
-			await Send("Endpoint " + localEndpointOf(_client.InfoHandler));
+			await Send("EndPoint " + localEndpointOf(_client.InfoHandler));
 		}
 
 		internal async Task Send(string message)

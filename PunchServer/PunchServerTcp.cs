@@ -8,6 +8,7 @@ using System.Threading;
 using System.Net;
 using System.IO;
 using System.Diagnostics;
+using AltarNet;
 
 namespace PunchServer
 {
@@ -21,7 +22,7 @@ namespace PunchServer
 			_server = new AltarNet.TcpServerHandler(localaddr, port);
 			_server.Connected += _server_Connected;
 			_server.Disconnected += _server_Disconnected;
-			_server.ReceivedFull += _listener_ReceivedFull;
+			_server.ReceivedFull += _server_ReceivedFull;
 		}
 
 		internal void Start()
@@ -43,8 +44,8 @@ namespace PunchServer
 
 		private void _server_Connected(object sender, AltarNet.TcpEventArgs e)
 		{
-			e.Client.Tag = ++_connectionIndex;
-			Trace.TraceInformation("{0}: Client connected from {1}", e.Client.Tag, endPointOf(e.Client));
+			e.Client.Tag = new ClientMetaData { ConnectionIndex = ++_connectionIndex };
+			Trace.TraceInformation("{0}: Client connected from {1}", metaDataOf(e.Client).ConnectionIndex, endPointOf(e.Client));
 			
 			tryPairClients();
 			Trace.TraceInformation("Connected listener done");
@@ -52,15 +53,30 @@ namespace PunchServer
 
 		private void _server_Disconnected(object sender, AltarNet.TcpEventArgs e)
 		{
-			Trace.TraceInformation("{0}: Client disconnected", e.Client.Tag);
+			Trace.TraceInformation("{0}: Client disconnected", metaDataOf(e.Client).ConnectionIndex);
 		}
 
-		private void _listener_ReceivedFull(object sender, AltarNet.TcpReceivedEventArgs e)
+		private void _server_ReceivedFull(object sender, AltarNet.TcpReceivedEventArgs e)
 		{
-			var message = System.Text.Encoding.UTF8.GetString(e.Data);
-			Trace.TraceInformation("{0}: Received full \"{1}\"", e.Client.Tag, message);
-		}
+			var metaData = metaDataOf(e.Client);
 
+			var dataAsString = System.Text.Encoding.UTF8.GetString(e.Data);
+			var parts = dataAsString.Split(new[] { ' ' }, 2);
+			var verb = parts[0];
+
+			switch (verb)
+			{
+				case "EndPoint":
+					metaData.EndPoint = parts[1];
+					Trace.TraceInformation("{0}: EndPoint = \"{1}\"", metaData.ConnectionIndex, metaData.EndPoint);
+					break;
+
+				default:
+					Trace.TraceInformation("{0}: Ignoring message \"{1}\"", metaData.ConnectionIndex, dataAsString);
+					break;
+			}
+
+		}
 
 
 
@@ -91,6 +107,11 @@ namespace PunchServer
 		{
 			var data = Encoding.UTF8.GetBytes(message);
 			await client1.SendAsync(data);
+		}
+
+		private ClientMetaData metaDataOf(TcpClientInfo client)
+		{
+			return client.Tag as ClientMetaData;
 		}
 
 
