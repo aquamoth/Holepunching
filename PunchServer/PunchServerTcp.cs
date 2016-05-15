@@ -21,7 +21,6 @@ namespace PunchServer
 			_server = new AltarNet.TcpServerHandler(localaddr, port);
 			_server.Connected += _server_Connected;
 			_server.Disconnected += _server_Disconnected;
-			_server.ReceivedFragment += _listener_ReceivedFragment;
 			_server.ReceivedFull += _listener_ReceivedFull;
 		}
 
@@ -32,7 +31,7 @@ namespace PunchServer
 			_server.Start();
 		}
 
-		internal async Task Stop()
+		internal void Stop()
 		{
 			if (!_server.IsListening)
 				throw new NotSupportedException("PunchServerTcp is not started.");
@@ -45,7 +44,10 @@ namespace PunchServer
 		private void _server_Connected(object sender, AltarNet.TcpEventArgs e)
 		{
 			e.Client.Tag = ++_connectionIndex;
-			Trace.TraceInformation("{0}: Client connected", e.Client.Tag);
+			Trace.TraceInformation("{0}: Client connected from {1}", e.Client.Tag, endPointOf(e.Client));
+			
+			tryPairClients();
+			Trace.TraceInformation("Connected listener done");
 		}
 
 		private void _server_Disconnected(object sender, AltarNet.TcpEventArgs e)
@@ -53,18 +55,46 @@ namespace PunchServer
 			Trace.TraceInformation("{0}: Client disconnected", e.Client.Tag);
 		}
 
-		private void _listener_ReceivedFragment(object sender, AltarNet.TcpFragmentReceivedEventArgs e)
-		{
-			var message = System.Text.Encoding.UTF8.GetString(e.Packet.Data);
-			Trace.TraceInformation("{0}: Received fragment \"{1}\"", e.Client.Tag, message);
-		}
-
 		private void _listener_ReceivedFull(object sender, AltarNet.TcpReceivedEventArgs e)
 		{
 			var message = System.Text.Encoding.UTF8.GetString(e.Data);
 			Trace.TraceInformation("{0}: Received full \"{1}\"", e.Client.Tag, message);
 		}
-		
+
+
+
+
+		private void tryPairClients()
+		{
+			if (_server.Clients.Count == 2)
+			{
+				var client1 = _server.Clients.First().Value;
+				var client2 = _server.Clients.Skip(1).First().Value;
+
+				//var localEndpoint = client1.Client.Client.LocalEndPoint;
+				var client1Endpoint = endPointOf(client1);
+				var client2Endpoint = endPointOf(client2);
+
+				var task1 = sendAsync(client1, client2Endpoint.ToString());
+				var task2 = sendAsync(client2, client1Endpoint.ToString());
+				Trace.TraceInformation("Sent messages pairing clients");
+				Task.WaitAll(new[] { task1, task2 });
+			}
+		}
+
+		static IPEndPoint endPointOf(AltarNet.TcpClientInfo clientInfo)
+		{
+			return clientInfo.Client.Client.RemoteEndPoint as IPEndPoint;
+		}
+
+		static async Task sendAsync(AltarNet.TcpClientInfo client1, string message)
+		{
+			var data = Encoding.UTF8.GetBytes(message);
+			await client1.SendAsync(data);
+		}
+
+
+
 
 		readonly AltarNet.TcpServerHandler _server;
 		int _connectionIndex;

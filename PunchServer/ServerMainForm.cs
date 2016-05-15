@@ -25,7 +25,7 @@ namespace PunchServer
 
 		async void buttonStopTcp_Click(object sender, EventArgs e)
 		{
-			await _tcpServer.Stop();
+			_tcpServer.Stop();
 		}
 
 
