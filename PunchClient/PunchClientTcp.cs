@@ -17,6 +17,7 @@ namespace PunchClient
 
 			_centralServerClient = new SimpleTcpClient();
 			_centralServerClient.DelimiterDataReceived += _centralServerClient_DelimiterDataReceived;
+			//_centralServerClient.DataReceived += _centralServerClient_DataReceived;
 			_centralServerClient.Disconnected += _centralServerClient_Disconnected;
 			_centralServerClient.Connect(hostNameOrAddress, port);
 
@@ -48,7 +49,7 @@ namespace PunchClient
 
 			DebugInfo("CentralServerClient received: {0}.", e.MessageString);
 			var messageParts = e.MessageString.Split(':');
-			var peerAddress = messageParts[0];//Dns.GetHostAddresses().First();
+			var peerAddress = messageParts[0];
 			var peerPort = int.Parse(messageParts[1]);
 			var localEndpoint = localEndpointOf(client);
 
@@ -65,15 +66,12 @@ namespace PunchClient
 			_peerClient.Disconnected += _peerClient_Disconnected;
 			_peerClient.Connect(peerAddress, peerPort);
 			DebugInfo("Local peer client connected to {0}", remoteEndpointOf(_peerClient));
-			//	if (success)
-			//	{
-			//		Trace.TraceInformation("Local peer client is connected to {0}", _peerClient.InfoHandler.Client.Client.RemoteEndPoint);
-			//	}
-			//	else
-			//	{
-			//		Trace.TraceWarning("Local peer failed to connect.");
-			//	}
 		}
+
+		//private void _centralServerClient_DataReceived(object sender, Message e)
+		//{
+		//	DebugInfo("Client received {0}.", e.MessageString);
+		//}
 
 		private void _centralServerClient_Disconnected(object sender, EventArgs e)
 		{
