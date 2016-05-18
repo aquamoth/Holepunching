@@ -3,129 +3,134 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Net.Sockets;
-using System.Threading;
+using SimpleTCP;
 using System.Net;
-using System.IO;
-using System.Diagnostics;
-using System.Net.NetworkInformation;
-using AltarNet;
 
 namespace PunchClient
 {
 	public class PunchClientTcp
 	{
-		internal async Task<bool> Start(string hostNameOrAddress, int port)
+		internal bool Start(string hostNameOrAddress, int port)
 		{
 			if (_centralServerClient != null)
 				throw new NotSupportedException("PunchClientTcp is already started.");
 
-			_centralServerClient = await connectToCentralServer(hostNameOrAddress, port);
-			if (_centralServerClient == null)
-				return false;
+			_centralServerClient = new SimpleTcpClient();
+			_centralServerClient.DelimiterDataReceived += _centralServerClient_DelimiterDataReceived;
+			_centralServerClient.Disconnected += _centralServerClient_Disconnected;
+			_centralServerClient.Connect(hostNameOrAddress, port);
 
-			Trace.TraceInformation("Client connected to {0}.", remoteEndpointOf(_centralServerClient.InfoHandler));
+			DebugInfo("Client connected to {0}.", remoteEndpointOf(_centralServerClient));
 			return true;
 		}
 
 		internal void Stop()
 		{
-			Trace.TraceInformation("Disconnecting from server.");
+			DebugInfo("Disconnecting from server.");
 			_centralServerClient.Disconnect();
 			_centralServerClient = null;
 		}
 
-		internal async Task RegisterLocalEndpoint()
+		internal void RegisterLocalEndpoint()
 		{
-			await Send("EndPoint " + localEndpointOf(_centralServerClient.InfoHandler));
+			Send("EndPoint " + localEndpointOf(_centralServerClient));
 		}
 
-		internal async Task Send(string message)
+		internal void Send(string message)
 		{
-			var data = System.Text.Encoding.UTF8.GetBytes(message);
-			await _centralServerClient.SendAsync(data);
-			Trace.TraceInformation("Client sent: {0}.", message);
+			_centralServerClient.WriteLine(message);
+			DebugInfo("Client sent: {0}.", message);
 		}
 
-
-
-
-
-		private void _client_ReceivedFull(object sender, AltarNet.TcpReceivedEventArgs e)
+		private void _centralServerClient_DelimiterDataReceived(object sender, Message e)
 		{
-			var message = System.Text.Encoding.UTF8.GetString(e.Data);
-			Trace.TraceInformation("Client received: {0}.", message);
+			var client = sender as SimpleTcpClient;
 
-			var localPort = localEndpointOf(_centralServerClient.InfoHandler).Port;
-			_centralServerClient.Disconnect();
-			_peerServer = new TcpServerHandler(new IPAddress(0), localPort);
-			_peerServer.Connected += _localServer_Connected;
-			_peerServer.Start();
+			DebugInfo("CentralServerClient received: {0}.", e.MessageString);
+			var messageParts = e.MessageString.Split(':');
+			var peerAddress = messageParts[0];//Dns.GetHostAddresses().First();
+			var peerPort = int.Parse(messageParts[1]);
+			var localEndpoint = localEndpointOf(client);
 
-			var parts = message.Split(':');
-			var address = Dns.GetHostAddresses(parts[0]).First();
-			var port = int.Parse(parts[1]);
-			_peerClient = new TcpClientHandler(address, port);
-			var success = _peerClient.Connect();
-			if (success)
-			{
-				Trace.TraceInformation("Local peer client is connected to {0}", _peerClient.InfoHandler.Client.Client.RemoteEndPoint);
-			}
-			else
-			{
-				Trace.TraceWarning("Local peer failed to connect.");
-			}
+			client.Disconnect();
+
+			_peerServer = new SimpleTcpServer();
+			_peerServer.ClientConnected += _peerServer_ClientConnected;
+			_peerServer.ClientDisconnected += _peerServer_ClientDisconnected;
+			_peerServer.Start(localEndpoint.Address, localEndpoint.Port);
+			DebugInfo("PeerServer started.");
+
+
+			_peerClient = new SimpleTcpClient();
+			_peerClient.Disconnected += _peerClient_Disconnected;
+			_peerClient.Connect(peerAddress, peerPort);
+			DebugInfo("Local peer client connected to {0}", remoteEndpointOf(_peerClient));
+			//	if (success)
+			//	{
+			//		Trace.TraceInformation("Local peer client is connected to {0}", _peerClient.InfoHandler.Client.Client.RemoteEndPoint);
+			//	}
+			//	else
+			//	{
+			//		Trace.TraceWarning("Local peer failed to connect.");
+			//	}
 		}
 
-		private void _localServer_Connected(object sender, TcpEventArgs e)
+		private void _centralServerClient_Disconnected(object sender, EventArgs e)
 		{
-			Trace.TraceInformation("Local Server got connection from {0}.", e.Client.Client.Client.RemoteEndPoint);
-			_peerServer.DisconnectClient(e.Client);
-			Trace.TraceInformation("Local Server disconnected client.");
+			DebugInfo("CentralServerClient disconnected.");
 		}
 
-		private void _client_Disconnected(object sender, AltarNet.TcpEventArgs e)
+		private void _peerServer_ClientConnected(object sender, System.Net.Sockets.TcpClient e)
 		{
-			Trace.TraceInformation("Client has been disconnected.");
+			DebugInfo("Local Server got connection from {0}.", e.Client.RemoteEndPoint);
+			e.Client.Disconnect(true);
+			DebugInfo("Local Server disconnected client.");
+		}
+
+		private void _peerServer_ClientDisconnected(object sender, System.Net.Sockets.TcpClient e)
+		{
+			DebugInfo("Client has been disconnected.");
 			_centralServerClient = null;
 		}
 
-
-
-
-
-		async Task<TcpClientHandler> connectToCentralServer(string hostNameOrAddress, int port)
+		private void _peerClient_Disconnected(object sender, EventArgs e)
 		{
-			var address = (await Dns.GetHostAddressesAsync(hostNameOrAddress)).Where(x => x.AddressFamily == AddressFamily.InterNetwork).First();
-			var client = new AltarNet.TcpClientHandler(address, port);
-			client.ReceivedFull += _client_ReceivedFull;
-			client.Disconnected += _client_Disconnected;
+			DebugInfo("Local PeerClient disconnected.");
+		}
 
-			await client.ConnectAsync();
-			if (client.LastConnectError != null)
+
+
+
+		static IPEndPoint localEndpointOf(SimpleTcpClient client)
+		{
+			return client.TcpClient.Client.LocalEndPoint as IPEndPoint;
+		}
+
+		static IPEndPoint remoteEndpointOf(SimpleTcpClient client)
+		{
+			return client.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+		}
+
+		#region Debug logging
+
+		[System.Diagnostics.Conditional("DEBUG")]
+		void DebugInfo(string format, params object[] args)
+		{
+			if (_debugInfoTime == null)
 			{
-				Trace.TraceError("Failed to connect. Reason: {0}.", client.LastConnectError);
-				client = null;
+				_debugInfoTime = new System.Diagnostics.Stopwatch();
+				_debugInfoTime.Start();
 			}
-
-			return client;
+			System.Diagnostics.Debug.WriteLine(_debugInfoTime.ElapsedMilliseconds + ": " + format, args);
 		}
+		System.Diagnostics.Stopwatch _debugInfoTime;
 
-		static IPEndPoint localEndpointOf(AltarNet.TcpClientInfo clientInfo)
-		{
-			return clientInfo.Client.Client.LocalEndPoint as IPEndPoint;
-		}
-
-		static IPEndPoint remoteEndpointOf(AltarNet.TcpClientInfo clientInfo)
-		{
-			return clientInfo.Client.Client.RemoteEndPoint as IPEndPoint;
-		}
+		#endregion Debug logging
 
 
-
-		TcpClientHandler _centralServerClient = null;
-		TcpServerHandler _peerServer = null;
-		TcpClientHandler _peerClient = null;
+		SimpleTcpClient _centralServerClient = null;
+		SimpleTcpServer _peerServer = null;
+		SimpleTcpClient _peerClient = null;
 
 	}
 }

@@ -23,7 +23,9 @@ namespace PunchClient
 		async void buttonConnect_Click(object sender, EventArgs e)
 		{
 			buttonConnect.Enabled = false;
-			var success = await _client.Start(textBoxHostname.Text, int.Parse(textBoxPort.Text));
+			var hostnameOrAddress = textBoxHostname.Text;
+			var port = int.Parse(textBoxPort.Text);
+			var success = _client.Start(hostnameOrAddress, port);
 			if (success)
 			{
 				buttonDisconnect.Enabled = true;
@@ -34,14 +36,14 @@ namespace PunchClient
 			}
 		}
 
-		private async void buttonregisterEndpoint_Click(object sender, EventArgs e)
+		private void buttonregisterEndpoint_Click(object sender, EventArgs e)
 		{
-			await _client.RegisterLocalEndpoint();
+			_client.RegisterLocalEndpoint();
 		}
 
-		private async void buttonSend_Click(object sender, EventArgs e)
+		private void buttonSend_Click(object sender, EventArgs e)
 		{
-			await _client.Send(textBoxMessage.Text);
+			_client.Send(textBoxMessage.Text);
 		}
 
 		private void buttonDisconnect_Click(object sender, EventArgs e)
