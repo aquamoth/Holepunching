@@ -3,12 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Net.Sockets;
 using System.Threading;
-using System.Net;
 using System.IO;
 using System.Diagnostics;
-using SimpleTCP;
+using SocketMessaging.Server;
+using SocketMessaging;
 
 namespace PunchServer
 {
@@ -17,16 +16,11 @@ namespace PunchServer
 		public PunchServerTcp(int port)
 		{
 			_port = port;
-			_connectionIndex = 0;
-
-			_server = new SimpleTcpServer();
-			_server.ClientConnected += _server_ClientConnected;
-			_server.ClientDisconnected += _server_ClientDisconnected;
-			_server.DelimiterDataReceived += _server_DelimiterDataReceived;
-			_server.DataReceived += _server_DataReceived;
+			_server = new TcpServer();
+            _server.Connected += _server_Connected;
 		}
 
-		internal void Start()
+        internal void Start()
 		{
 			if (_server.IsStarted)
 				throw new NotSupportedException("PunchServerTcp is already started.");
@@ -44,78 +38,68 @@ namespace PunchServer
 			DebugInfo("Server stopped.");
 		}
 
-		private void _server_ClientConnected(object sender, TcpClient e)
-		{
-			//e.Client.Tag = new ClientMetaData { ConnectionIndex = ++_connectionIndex };
-			DebugInfo("{0}: Client connected from {1}", 0, endPointOf(e));//metaDataOf(e).ConnectionIndex
+        private void _server_Connected(object sender, ConnectionEventArgs e)
+        {
+            DebugInfo("{0}: Client connected from {1}", e.Connection.Id, endPointOf(e.Connection));//metaDataOf(e).ConnectionIndex
+            e.Connection.Disconnected += _server_Disconnected;
+            e.Connection.ReceivedMessage += _server_ReceivedMessage;
+            e.Connection.SetMode(MessageMode.PrefixedLength);
 
-			tryPairClients();
-			DebugInfo("Connected listener done");
-		}
+            tryPairClients();
+            DebugInfo("Connected listener done");
+        }
 
-		private void _server_ClientDisconnected(object sender, TcpClient e)
-		{
-			DebugInfo("{0}: Client disconnected", 0); //metaDataOf(e).ConnectionIndex
-		}
+        private void _server_Disconnected(object sender, EventArgs e)
+        {
+            var connection = sender as Connection;
+            DebugInfo("{0}: Client disconnected", connection.Id);
+        }
 
-		private void _server_DelimiterDataReceived(object sender, Message e)
-		{
-			DebugInfo("{0}: Server received delimited {1}", 0, e.MessageString);
-			//var metaData = metaDataOf(e);
+        private void _server_ReceivedMessage(object sender, EventArgs e)
+        {
+            var connection = sender as Connection;
+            var message = connection.ReceiveMessageString();
+            DebugInfo("{0}: Server received delimited {1}", connection.Id, message);
 
-			var parts = e.MessageString.Split(new[] { ' ' }, 2);
-			var verb = parts[0];
+            var parts = message.Split(new[] { ' ' }, 2);
+            var verb = parts[0];
 
-			switch (verb)
-			{
-				case "EndPoint":
-					//metaData.EndPoint = parts[1];
-					DebugInfo("{0}: EndPoint = \"{1}\"", 0, parts[1]);//metaData.ConnectionIndex
-					break;
+            switch (verb)
+            {
+                case "EndPoint":
+                    //metaData.EndPoint = parts[1];
+                    DebugInfo("{0}: EndPoint = \"{1}\"", connection.Id, parts[1]);//metaData.ConnectionIndex
+                    break;
 
-				default:
-					DebugInfo("{0}: Ignoring message \"{1}\"", 0, e.MessageString);//metaData.ConnectionIndex
-					break;
-			}
-		}
-
-		private void _server_DataReceived(object sender, Message e)
-		{
-			DebugInfo("{0}: Server received {1}", 0, e.MessageString); //metaDataOf(e).ConnectionIndex
-		}
-
-
+                default:
+                    DebugInfo("{0}: Ignoring message \"{1}\"", connection.Id, message);//metaData.ConnectionIndex
+                    break;
+            }
+        }
 
 		private void tryPairClients()
 		{
-			if (_server.ConnectedClientsCount == 2)
+			if (_server.Connections.Count() == 2)
 			{
-				var client1 = _server.ConnectedClients.First();
-				var client2 = _server.ConnectedClients.Skip(1).First();
-				
-				var client1Endpoint = endPointOf(client1);
-				var client2Endpoint = endPointOf(client2);
+				var client1 = _server.Connections.First();
+				var client2 = _server.Connections.Last();
 
-				send(client1, client2Endpoint.ToString());
-				send(client2, client1Endpoint.ToString());
-				DebugInfo("Sent messages pairing clients");
+                var nounce = Guid.NewGuid();
+                client1.Send(nounce.ToByteArray());
+                client1.Send(endPointOf(client2).ToString());
+
+                client2.Send(nounce.ToByteArray());
+				client2.Send(endPointOf(client1).ToString());
+
+                DebugInfo($"Sent pairing info to clients with nounce '{nounce}'.");
 			}
 		}
 
-		static IPEndPoint endPointOf(TcpClient client)
+		static System.Net.IPEndPoint endPointOf(Connection connection)
 		{
-			return client.Client.RemoteEndPoint as IPEndPoint;
+			return connection.Socket.RemoteEndPoint as System.Net.IPEndPoint;
 		}
-
-		static void send(TcpClient client, string message)
-		{
-			var buffer = Encoding.UTF8.GetBytes(message + Encoding.UTF8.GetString(new byte[] { 0x13 }));
-			client.Client.Send(buffer);
-			//var stream = client.GetStream();
-			//var sw = new StreamWriter(stream);
-			//sw.Write(message + Encoding.UTF8.GetString(new byte[] { 0x13 }));
-		}
-
+        
 		//private ClientMetaData metaDataOf(TcpClientInfo client)
 		//{
 		//	return client.Tag as ClientMetaData;
@@ -140,8 +124,7 @@ namespace PunchServer
 
 
 
-		readonly SimpleTcpServer _server;
+		readonly TcpServer _server;
 		readonly int _port;
-		int _connectionIndex;
 	}
 }

@@ -81,9 +81,9 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\SimpleTCP\SimpleTCP\SimpleTCP.csproj">
-      <Project>{c9c99f87-e188-49d2-a323-09fe79f39f8d}</Project>
-      <Name>SimpleTCP</Name>
+    <ProjectReference Include="..\..\SocketMessaging\SocketMessaging\SocketMessaging.csproj">
+      <Project>{825c5e25-cd64-4637-8957-4050e736a87b}</Project>
+      <Name>SocketMessaging</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
