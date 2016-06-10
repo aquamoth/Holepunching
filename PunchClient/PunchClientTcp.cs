@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net;
-using SocketMessaging;
 
 namespace PunchClient
 {
@@ -16,8 +15,8 @@ namespace PunchClient
 				throw new NotSupportedException("PunchClientTcp is already started.");
 
             var ipAddress = Dns.GetHostAddresses(hostNameOrAddress).First();
-			_centralServerClient = TcpClient.Connect(ipAddress, port);
-            _centralServerClient.SetMode(MessageMode.PrefixedLength);
+			_centralServerClient = SocketMessaging.TcpClient.Connect(ipAddress, port);
+            _centralServerClient.SetMode(SocketMessaging.MessageMode.PrefixedLength);
 
             _centralServerClient.ReceivedMessage += _centralServerClient_ReceivedMessage;
 			_centralServerClient.Disconnected += _centralServerClient_Disconnected;
@@ -46,7 +45,7 @@ namespace PunchClient
 
         private void _centralServerClient_ReceivedMessage(object sender, EventArgs e)
         {
-            var client = sender as TcpClient;
+            var client = sender as SocketMessaging.TcpClient;
 
             if (_nounce == Guid.Empty)
             {
@@ -69,8 +68,8 @@ namespace PunchClient
                 var messageParts = message.Split(':');
                 var peerAddress = messageParts[0].Split('.').Select(x => byte.Parse(x)).ToArray();
                 var peerPort = int.Parse(messageParts[1]);
-                _peerClient = TcpClient.Connect(new IPAddress(peerAddress), peerPort);
-                _peerClient.SetMode(MessageMode.PrefixedLength);
+                _peerClient = SocketMessaging.TcpClient.Connect(new IPAddress(peerAddress), peerPort);
+                _peerClient.SetMode(SocketMessaging.MessageMode.PrefixedLength);
                 _peerClient.Disconnected += _peerClient_Disconnected;
                 _peerClient.ReceivedMessage += _peerClient_ReceivedMessage;
                 DebugInfo("Peer client sending nounce '{1}' to {0}.", remoteEndpointOf(_peerClient), _nounce);
@@ -83,10 +82,10 @@ namespace PunchClient
 			DebugInfo("CentralServerClient disconnected.");
 		}
 
-        private void _peerServer_Connected(object sender, SocketMessaging.Server.ConnectionEventArgs e)
+        private void _peerServer_Connected(object sender, SocketMessaging.ConnectionEventArgs e)
         {
             DebugInfo("Peer Server got connection from {0}.", e.Connection.Socket.RemoteEndPoint);
-            e.Connection.SetMode(MessageMode.PrefixedLength);
+            e.Connection.SetMode(SocketMessaging.MessageMode.PrefixedLength);
             e.Connection.ReceivedMessage += _peerServer_ReceivedMessage;
             //e.Connection.Close(/*true*/);
             //DebugInfo("Local Server disconnected client.");
@@ -94,7 +93,7 @@ namespace PunchClient
 
         private void _peerServer_ReceivedMessage(object sender, EventArgs e)
         {
-            var connection = sender as SocketMessaging.Server.Connection;
+            var connection = sender as SocketMessaging.Connection;
             var nounceToCheck = new Guid(connection.ReceiveMessage());
             lock (_nounceCheckLock)
             {
@@ -121,7 +120,7 @@ namespace PunchClient
 
         private void _peerClient_ReceivedMessage(object sender, EventArgs e)
         {
-            var connection = sender as SocketMessaging.Server.Connection;
+            var connection = sender as SocketMessaging.Connection;
             var nounceResponse = connection.ReceiveMessageString();
             lock (_nounceCheckLock)
             {
@@ -160,12 +159,12 @@ namespace PunchClient
 
 
 
-		static IPEndPoint localEndpointOf(TcpClient client)
+		static IPEndPoint localEndpointOf(SocketMessaging.TcpClient client)
 		{
 			return client.Socket.LocalEndPoint as IPEndPoint;
 		}
 
-		static IPEndPoint remoteEndpointOf(TcpClient client)
+		static IPEndPoint remoteEndpointOf(SocketMessaging.TcpClient client)
 		{
 			return client.Socket.RemoteEndPoint as IPEndPoint;
 		}
@@ -184,12 +183,12 @@ namespace PunchClient
 		}
 		System.Diagnostics.Stopwatch _debugInfoTime;
 
-		#endregion Debug logging
+        #endregion Debug logging
 
 
-		TcpClient _centralServerClient = null;
+        SocketMessaging.TcpClient _centralServerClient = null;
         SocketMessaging.Server.TcpServer _peerServer = null;
-		TcpClient _peerClient = null;
+        SocketMessaging.TcpClient _peerClient = null;
 
         Guid _nounce = Guid.Empty;
         bool _peerConnectionEstablished = false;

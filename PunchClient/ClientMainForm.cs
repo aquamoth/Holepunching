@@ -20,7 +20,7 @@ namespace PunchClient
 			buttonDisconnect.Enabled = false;
 		}
 
-		async void buttonConnect_Click(object sender, EventArgs e)
+		void buttonConnect_Click(object sender, EventArgs e)
 		{
 			buttonConnect.Enabled = false;
 			var hostnameOrAddress = textBoxHostname.Text;

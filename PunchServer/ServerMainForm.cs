@@ -23,7 +23,7 @@ namespace PunchServer
 			_tcpServer.Start();
 		}
 
-		async void buttonStopTcp_Click(object sender, EventArgs e)
+		void buttonStopTcp_Click(object sender, EventArgs e)
 		{
 			_tcpServer.Stop();
 		}
